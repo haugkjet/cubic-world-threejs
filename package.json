@@ -1,0 +1,29 @@
+{
+  "name": "cubic-world-threejs",
+  "version": "1.0.0",
+  "description": "CG boost cubic world shader in three.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haugkjet/cubic-world-threejs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/haugkjet/cubic-world-threejs/issues"
+  },
+  "homepage": "https://github.com/haugkjet/cubic-world-threejs#readme",
+  "devDependencies": {
+    "vite": "^6.2.1"
+  },
+  "dependencies": {
+    "lil-gui": "^0.20.0",
+    "three": "^0.174.0",
+    "three-perf": "^1.0.10"
+  }
+}
