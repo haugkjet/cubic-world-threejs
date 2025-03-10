@@ -45,50 +45,14 @@ window.addEventListener('resize', () =>
         renderer.setSize(sizes.width, sizes.height)
     })
 
-const composer = new EffectComposer(renderer);
-const renderPass = new RenderPass(scene, camera);
-composer.addPass(renderPass);
-
-const bloomparams = {
-    enableBloom: true,
-    bloomStrength: 0.162,
-    bloomRadius: 0.4,
-    bloomThreshold: 0.496
-  };
-
-const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.162,
-    0.4,
-    0.496
-  );
-  composer.addPass(bloomPass);
 
   const gui = new GUI( {closeFolders: true});
 gui.add( document, 'title' );
 
 
-  
-  gui.add(bloomparams, 'enableBloom').name('Enable Bloom').onChange(toggleBloom);
-  gui.add(bloomparams, 'bloomStrength', 0, 3).onChange(updateBloomPass);
-  gui.add(bloomparams, 'bloomRadius', 0, 1).onChange(updateBloomPass);
-  gui.add(bloomparams, 'bloomThreshold', 0, 1).onChange(updateBloomPass);  
-
-  function toggleBloom(value) {
-    bloomPass.enabled = value;
-  }
-
-  function updateBloomPass() {
-    bloomPass.strength = bloomparams.bloomStrength;
-    bloomPass.radius = bloomparams.bloomRadius;
-    bloomPass.threshold = bloomparams.bloomThreshold;
-  }
-
   const params = {
     visible: false,
-    roomenv: true,
-    roombackground: false,
-    gradientStrength: 1.0,
+    gradientStrength: 0.4,
   };
 
   const SKY_COLOR = 0x6ac5fe ;
@@ -125,12 +89,6 @@ gui.add( document, 'title' );
   scene.add(sky);
 
   
-// Create and apply RoomEnvironment
-const pmremGenerator = new THREE.PMREMGenerator(renderer);
-const roomEnvironment = new RoomEnvironment();
-const roomEnvironmentMap = pmremGenerator.fromScene(roomEnvironment).texture;
-scene.environment = roomEnvironmentMap;
-
 const controls = new OrbitControls(camera, renderer.domElement);
 
 controls.target.set(0, 0, 0); // Or your desired look-at point  
@@ -157,98 +115,103 @@ perf.visible =false;
       perf.visible =false;
     }
   });  
-  gui.add(params, 'roomenv').name('Room Env').onChange((value) => {
-    if (value) {
-        scene.environment = roomEnvironmentMap;
-    } else {
-        scene.environment = null
-    }
-  });  
 
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
+  const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-  });
+  material.userData = {
+    cornerGradientStrength: { value: 5.0 },
+    gradientStrength: { value: 0.4 },
+    topColor: { value: new THREE.Color(0xffffff) },
+    bottomColor: { value: new THREE.Color(0xd9d9d9) }
+  };
   
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.topColor = { value: new THREE.Color(0xffffff) };
-    shader.uniforms.bottomColor = { value: new THREE.Color(0x333333) };
-    shader.uniforms.gradientStrength = { value: 1.0 }; // Default strength
+    // Add uniforms for both effects
+    shader.uniforms.cornerGradientStrength = material.userData.cornerGradientStrength;
+    shader.uniforms.gradientStrength = material.userData.gradientStrength;
+    shader.uniforms.topColor = material.userData.topColor;
+    shader.uniforms.bottomColor = material.userData.bottomColor;
   
-    // Modify vertex shader to pass position
-  shader.vertexShader = shader.vertexShader.replace(
-    '#include <common>',
-    `
-    #include <common>
-    varying vec3 vPosition;
-    `
-  );
+    // Add varying to pass position data to the fragment shader
+    shader.vertexShader = `
+      varying vec3 vPosition;
+      ${shader.vertexShader}
+    `.replace(
+      `#include <begin_vertex>`,
+      `
+        #include <begin_vertex>
+        vPosition = position; // Pass local position to fragment shader
+      `
+    );
+  
+    // Modify fragment shader to combine both effects
+    shader.fragmentShader = `
+      uniform float cornerGradientStrength;
+      uniform float gradientStrength;
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      varying vec3 vPosition;
+  
+      ${shader.fragmentShader}
+    `.replace(
+      `#include <dithering_fragment>`,
+      `
+        // Bottom-to-top gradient effect
+        float blendFactor = smoothstep(-gradientStrength, gradientStrength, vPosition.y);
+        vec3 verticalGradientColor = mix(bottomColor, topColor, blendFactor);
+  
+        // Corner darkening effect
+        vec3 absPosition = abs(vPosition); // Absolute position for symmetry
+        float distanceFromCenter = length(absPosition); // Distance from face center
+        float cornerFactor = pow(distanceFromCenter, cornerGradientStrength);
+  
+        // Combine both effects
+        vec3 finalColor = mix(verticalGradientColor, vec3(0.0, 0.0, 0.0), cornerFactor);
+  
+        // Apply final color to fragment
+        gl_FragColor.rgb *= finalColor;
+  
+        #include <dithering_fragment>
+      `
+    );
+  };
+  
+  // GUI controls for both effects
+  
+  gui.add(material.userData.cornerGradientStrength, 'value', 0, 10, 0.1)
+     .name('Corner Gradient Strength')
+     .onChange(() => {
+       material.needsUpdate = true; // Force material update when changed
+     });
+  
+  gui.add(material.userData.gradientStrength, 'value', 0.1, 5.0)
+     .name('Vertical Gradient Strength')
+     .onChange(() => {
+       material.needsUpdate = true; // Force material update when changed
+     });
 
-  shader.vertexShader = shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    `
-    #include <begin_vertex>
-    vPosition = position;
-    `
-  );
-
-  // Modify fragment shader to apply gradient effect
-  shader.fragmentShader = shader.fragmentShader.replace(
-    '#include <common>',
-    `
-    #include <common>
-    uniform vec3 topColor;
-    uniform vec3 bottomColor;
-    uniform float gradientStrength;
-    varying vec3 vPosition;
-    `
-  );
-
-  shader.fragmentShader = shader.fragmentShader.replace(
-    '#include <dithering_fragment>',
-    `
-    #include <dithering_fragment>
-    
-    // Calculate blend factor based on y-position and strength
-    float blendFactor = smoothstep(-gradientStrength, gradientStrength, vPosition.y);
-    vec3 finalColor = mix(bottomColor, topColor, blendFactor);
-    
-    // Apply the final color to the fragment
-    gl_FragColor.rgb *= finalColor;
-    `
-  );
-
-  // Store the modified shader for external access (e.g., GUI updates)
-  material.userData.shader = shader;
-};
-
-
-// Update the gradient strength dynamically when changed in the GUI
-gui.add(params, 'gradientStrength', 0.1, 5.0).onChange((value) => {
-  if (material.userData.shader) {
-    material.userData.shader.uniforms.gradientStrength.value = value;
-  }
-});
-
-// Create a cube
-const geometry2 = new THREE.BoxGeometry(1, 1, 1);
-const cube = new THREE.Mesh(geometry2, material);
+// Some cubes
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const cube = new THREE.Mesh(geometry, material);
 cube.position.y=0.5;
 scene.add(cube);
 
-// Create a cube
-const geometry3 = new THREE.BoxGeometry(1, 1, 1);
-const cube3 = new THREE.Mesh(geometry3, material);
-cube3.position.y=0.5;
-cube3.position.z=1.5;
-cube.rotateX(45);
 
+
+const cube2 = new THREE.Mesh(geometry, material);
+cube2.position.y=0.5;
+cube2.position.z=1.5;
+scene.add(cube2);
+
+
+const cube3 = new THREE.Mesh(geometry, material);
+cube3.position.y=0.5;
+cube3.position.z=3;
 scene.add(cube3);
 
 
-
 const geometryPlane = new THREE.PlaneGeometry(20, 20)
-const materialplane = new THREE.MeshStandardMaterial({ color: 0xbbbbbb });
+const materialplane = new THREE.MeshBasicMaterial({ color: 0xbbbbbbb });
 const plane = new THREE.Mesh(geometryPlane, materialplane);
 scene.add(plane);
 plane.rotation.x = -Math.PI/2
@@ -261,7 +224,7 @@ function animate() {
    
     requestAnimationFrame(animate);
     //const elapsedTime = clock.getElapsedTime();
-     composer.render();
+  renderer.render(scene, camera);
   perf.end();
 }
 
