@@ -118,20 +118,14 @@ perf.visible =false;
 
   const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-  material.userData = {
-    cornerGradientStrength: { value: 5.0 },
-    gradientStrength: { value: 0.4 },
-    topColor: { value: new THREE.Color(0xffffff) },
-    bottomColor: { value: new THREE.Color(0xd9d9d9) }
-  };
+ 
   
   material.onBeforeCompile = (shader) => {
     // Add uniforms for both effects
-    shader.uniforms.cornerGradientStrength = material.userData.cornerGradientStrength;
-    shader.uniforms.gradientStrength = material.userData.gradientStrength;
-    shader.uniforms.topColor = material.userData.topColor;
-    shader.uniforms.bottomColor = material.userData.bottomColor;
-  
+    shader.uniforms.cornerGradientStrength = { value: 2.0 };
+    shader.uniforms.gradientStrength = { value: 1.0 };
+    shader.uniforms.topColor = { value: new THREE.Color(0xffffff) };
+    shader.uniforms.bottomColor = { value: new THREE.Color(0x333333) };  
     // Add varying to pass position data to the fragment shader
     shader.vertexShader = `
       varying vec3 vPosition;
@@ -174,29 +168,52 @@ perf.visible =false;
         #include <dithering_fragment>
       `
     );
+    material.userData.shader = shader;
+
   };
   
-  // GUI controls for both effects
+
+
+// Function to create a cube with custom properties
+function createCube(properties) {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const cubeMaterial = material.clone();
   
-  gui.add(material.userData.cornerGradientStrength, 'value', 0, 10, 0.1)
-     .name('Corner Gradient Strength')
-     .onChange(() => {
-       material.needsUpdate = true; // Force material update when changed
-     });
-  
-  gui.add(material.userData.gradientStrength, 'value', 0.1, 5.0)
-     .name('Vertical Gradient Strength')
-     .onChange(() => {
-       material.needsUpdate = true; // Force material update when changed
-     });
+  // Store custom properties in material's userData
+  cubeMaterial.userData.customProperties = properties;
+
+  // Override onBeforeCompile to set custom uniforms
+  const originalOnBeforeCompile = material.onBeforeCompile;
+  cubeMaterial.onBeforeCompile = function(shader) {
+    originalOnBeforeCompile.call(this, shader);
+    
+    const customProps = this.userData.customProperties;
+    shader.uniforms.cornerGradientStrength.value = customProps.cornerGradientStrength;
+    shader.uniforms.gradientStrength.value = customProps.gradientStrength;
+    shader.uniforms.topColor.value.set(customProps.color);
+    shader.uniforms.bottomColor.value.set(customProps.bottomColor || '#333333');
+  };
+
+  const cube = new THREE.Mesh(geometry, cubeMaterial);
+  cube.position.copy(properties.position);
+
+  return cube;
+}
+// Create cubes with individual properties
+const cubes = [
+  createCube({ color: '#ff0000', cornerGradientStrength: 3.0, gradientStrength: 0.8, position: new THREE.Vector3(-2, 0, 0) }),
+  createCube({ color: '#00ff00', cornerGradientStrength: 7.0, gradientStrength: 1.0, position: new THREE.Vector3(0, 0, 0) }),
+  createCube({ color: '#ffffff', cornerGradientStrength: 3.0, gradientStrength: 0.6, position: new THREE.Vector3(2, 0, 0) }),
+  createCube({ color: '#ADD8E6', cornerGradientStrength: 3.0, gradientStrength: 1.0, position: new THREE.Vector3(4, 0, 0) }),
+];
+
+cubes.forEach(cube => scene.add(cube));
 
 // Some cubes
-const geometry = new THREE.BoxGeometry(1, 1, 1);
+/*const geometry = new THREE.BoxGeometry(1, 1, 1);
 const cube = new THREE.Mesh(geometry, material);
 cube.position.y=0.5;
 scene.add(cube);
-
-
 
 const cube2 = new THREE.Mesh(geometry, material);
 cube2.position.y=0.5;
@@ -207,7 +224,7 @@ scene.add(cube2);
 const cube3 = new THREE.Mesh(geometry, material);
 cube3.position.y=0.5;
 cube3.position.z=3;
-scene.add(cube3);
+scene.add(cube3);*/
 
 
 const geometryPlane = new THREE.PlaneGeometry(20, 20)
@@ -215,7 +232,7 @@ const materialplane = new THREE.MeshBasicMaterial({ color: 0xbbbbbbb });
 const plane = new THREE.Mesh(geometryPlane, materialplane);
 scene.add(plane);
 plane.rotation.x = -Math.PI/2
-plane.position.y = 0
+plane.position.y = -0.5
 
 //const clock = new THREE.Clock();
 
@@ -229,3 +246,8 @@ function animate() {
 }
 
 animate();
+
+
+
+
+
