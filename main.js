@@ -87,7 +87,8 @@ gui.add( document, 'title' );
   const params = {
     visible: false,
     roomenv: true,
-    roombackground: false
+    roombackground: false,
+    gradientStrength: 1.0,
   };
 
   const SKY_COLOR = 0x6ac5fe ;
@@ -164,13 +165,86 @@ perf.visible =false;
     }
   });  
 
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+
+  });
+  
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.topColor = { value: new THREE.Color(0xffffff) };
+    shader.uniforms.bottomColor = { value: new THREE.Color(0x333333) };
+    shader.uniforms.gradientStrength = { value: 1.0 }; // Default strength
+  
+    // Modify vertex shader to pass position
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <common>',
+    `
+    #include <common>
+    varying vec3 vPosition;
+    `
+  );
+
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `
+    #include <begin_vertex>
+    vPosition = position;
+    `
+  );
+
+  // Modify fragment shader to apply gradient effect
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <common>',
+    `
+    #include <common>
+    uniform vec3 topColor;
+    uniform vec3 bottomColor;
+    uniform float gradientStrength;
+    varying vec3 vPosition;
+    `
+  );
+
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <dithering_fragment>',
+    `
+    #include <dithering_fragment>
+    
+    // Calculate blend factor based on y-position and strength
+    float blendFactor = smoothstep(-gradientStrength, gradientStrength, vPosition.y);
+    vec3 finalColor = mix(bottomColor, topColor, blendFactor);
+    
+    // Apply the final color to the fragment
+    gl_FragColor.rgb *= finalColor;
+    `
+  );
+
+  // Store the modified shader for external access (e.g., GUI updates)
+  material.userData.shader = shader;
+};
+
+
+// Update the gradient strength dynamically when changed in the GUI
+gui.add(params, 'gradientStrength', 0.1, 5.0).onChange((value) => {
+  if (material.userData.shader) {
+    material.userData.shader.uniforms.gradientStrength.value = value;
+  }
+});
 
 // Create a cube
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
-const cube = new THREE.Mesh(geometry, material);
+const geometry2 = new THREE.BoxGeometry(1, 1, 1);
+const cube = new THREE.Mesh(geometry2, material);
 cube.position.y=0.5;
 scene.add(cube);
+
+// Create a cube
+const geometry3 = new THREE.BoxGeometry(1, 1, 1);
+const cube3 = new THREE.Mesh(geometry3, material);
+cube3.position.y=0.5;
+cube3.position.z=1.5;
+cube.rotateX(45);
+
+scene.add(cube3);
+
 
 
 const geometryPlane = new THREE.PlaneGeometry(20, 20)
